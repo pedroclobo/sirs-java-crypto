@@ -3,6 +3,7 @@ package pt.tecnico.crypto;
 import static javax.xml.bind.DatatypeConverter.printHexBinary;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Arrays;
@@ -58,15 +59,18 @@ public class MACTest {
 		// generate AES secret key
 		SecretKey key = generateMACKey(SYM_KEY_SIZE);
 
+		// generate timestamp
+		long timestamp = System.currentTimeMillis();
+
 		// make MAC
 		System.out.println("Signing...");
-		byte[] cipherDigest = makeMAC(plainBytes, key);
+		byte[] cipherDigest = makeMAC(plainBytes, timestamp, key);
 		System.out.println("CipherDigest:");
 		System.out.println(printHexBinary(cipherDigest));
 
 		// verify the MAC
 		System.out.println("Verifying...");
-		boolean result = verifyMAC(cipherDigest, plainBytes, key);
+		boolean result = verifyMAC(cipherDigest, plainBytes, timestamp, key);
 		System.out.println("MAC is " + (result ? "right" : "wrong"));
 		assertTrue(result);
 
@@ -84,21 +88,40 @@ public class MACTest {
 	}
 
 	/** Makes a message authentication code. */
-	private static byte[] makeMAC(byte[] bytes, SecretKey key) throws Exception {
+	private static byte[] makeMAC(byte[] bytes, long timestamp, SecretKey key) throws Exception {
+		// generate timestamp buffer
+		ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
+		buffer.putLong(timestamp);
+		byte[] nonce = buffer.array();
+
+		// append nonce to bytes
+		byte[] macBytes = new byte[bytes.length + nonce.length];
+		System.arraycopy(bytes, 0, macBytes, 0, bytes.length);
+		System.arraycopy(nonce, 0, macBytes, bytes.length, nonce.length);
+
 		Mac mac = Mac.getInstance(MAC_ALGO);
 		mac.init(key);
-		byte[] macBytes = mac.doFinal(bytes);
 
-		return macBytes;
+		return mac.doFinal(macBytes);
 	}
 
 	/**
 	 * Calculates new digest from text and compare it to the to deciphered digest.
 	 */
-	private static boolean verifyMAC(byte[] receivedMacBytes, byte[] bytes, SecretKey key) throws Exception {
+	private static boolean verifyMAC(byte[] receivedMacBytes, byte[] bytes, long timestamp, SecretKey key) throws Exception {
+		// generate timestamp buffer
+		ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
+		buffer.putLong(timestamp);
+		byte[] nonce = buffer.array();
+
+		// append nonce to bytes
+		byte[] macBytes = new byte[bytes.length + nonce.length];
+		System.arraycopy(bytes, 0, macBytes, 0, bytes.length);
+		System.arraycopy(nonce, 0, macBytes, bytes.length, nonce.length);
+
 		Mac mac = Mac.getInstance(MAC_ALGO);
 		mac.init(key);
-		byte[] recomputedMacBytes = mac.doFinal(bytes);
+		byte[] recomputedMacBytes = mac.doFinal(macBytes);
 		return Arrays.equals(receivedMacBytes, recomputedMacBytes);
 	}
 
